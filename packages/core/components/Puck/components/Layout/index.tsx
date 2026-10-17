@@ -73,6 +73,32 @@ const PluginTab = ({
   );
 };
 
+const desktopMediaQuery = "(min-width: 638px)";
+
+/**
+ * Tracks whether the viewport is at the desktop breakpoint. Resolves to
+ * `undefined` until mounted so that the first render matches the server.
+ */
+const useIsDesktop = () => {
+  const [isDesktop, setIsDesktop] = useState<boolean | undefined>(undefined);
+
+  useBrowserLayoutEffect(() => {
+    const mediaQueryList = window.matchMedia(desktopMediaQuery);
+
+    const update = () => setIsDesktop(mediaQueryList.matches);
+
+    update();
+
+    mediaQueryList.addEventListener("change", update);
+
+    return () => {
+      mediaQueryList.removeEventListener("change", update);
+    };
+  }, []);
+
+  return isDesktop;
+};
+
 export const Layout = ({ children }: { children?: ReactNode }) => {
   const {
     iframe: _iframe,
@@ -285,6 +311,8 @@ export const Layout = ({ children }: { children?: ReactNode }) => {
   const hasDesktopFieldsPlugin =
     pluginItems["fields"] && pluginItems["fields"].mobileOnly === false;
 
+  const isDesktop = useIsDesktop();
+
   const mobilePanelExpanded = useAppStore(
     (s) => s.state.ui.mobilePanelExpanded ?? false
   );
@@ -368,19 +396,29 @@ export const Layout = ({ children }: { children?: ReactNode }) => {
                     onResizeEnd={handleLeftSidebarResizeEnd}
                   >
                     {Object.entries(pluginItems).map(
-                      ([id, { mobileOnly, render: Render, label }]) => (
-                        <PluginTab
-                          key={id}
-                          visible={currentPlugin === id}
-                          mobileOnly={mobileOnly}
-                        >
-                          <Render />
-                        </PluginTab>
-                      )
+                      ([id, { mobileOnly, render: Render }]) => {
+                        // Unmount mobile-only tabs on desktop rather than
+                        // hiding them with CSS. Otherwise the fields plugin
+                        // renders a second, hidden copy of the fields form
+                        // alongside the right sidebar, duplicating DOM ids.
+                        if (mobileOnly && isDesktop) {
+                          return null;
+                        }
+
+                        return (
+                          <PluginTab
+                            key={id}
+                            visible={currentPlugin === id}
+                            mobileOnly={mobileOnly}
+                          >
+                            <Render />
+                          </PluginTab>
+                        );
+                      }
                     )}
                   </Sidebar>
                   <Canvas />
-                  {!hasDesktopFieldsPlugin && (
+                  {!hasDesktopFieldsPlugin && isDesktop !== false && (
                     <Sidebar
                       position="right"
                       sidebarRef={rightSidebarRef}
